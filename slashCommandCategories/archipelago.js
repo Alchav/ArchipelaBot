@@ -59,13 +59,13 @@ module.exports = {
             interaction.client.tempData.apInterfaces.set(interaction.channel.id, APInterface);
             await interaction.reply(`Connected to ${serverAddress} using game ${gameName} with slot ${slotName}.`);
 
-            // Automatically disconnect and destroy this interface after six hours
-            return setTimeout(() => {
-              if (interaction.client.tempData.apInterfaces.has(interaction.channel.id)) {
-                interaction.client.tempData.apInterfaces.get(interaction.channel.id).disconnect();
-                interaction.client.tempData.apInterfaces.delete(interaction.channel.id);
-              }
-            }, 21600000);
+//            // Automatically disconnect and destroy this interface after six hours
+//            return setTimeout(() => {
+//              if (interaction.client.tempData.apInterfaces.has(interaction.channel.id)) {
+//                interaction.client.tempData.apInterfaces.get(interaction.channel.id).disconnect();
+//                interaction.client.tempData.apInterfaces.delete(interaction.channel.id);
+//              }
+//            }, 21600000);
           }
         }
       },
