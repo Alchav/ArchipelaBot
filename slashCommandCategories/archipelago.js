@@ -1,5 +1,6 @@
 const ArchipelagoInterface = require('../Archipelago/ArchipelagoInterface');
 const { SlashCommandBuilder } = require('discord.js');
+const { AsciiTable3, AlignmentEnum } = require('ascii-table3');
 
 module.exports = {
   category: 'Archipelago',
@@ -11,11 +12,11 @@ module.exports = {
         .setDMPermission(false)
         .addStringOption((opt) => opt
           .setName('server-address')
-          .setDescription('Server address and port (ex. archipelago.gg:12345) of the Archipelago server to connect to')
+          .setDescription('Server address and port (ex. archipelago.gg) of the Archipelago server to connect to')
           .setRequired(true))
-        .addStringOption((opt) => opt
-          .setName('game-name')
-          .setDescription('Name of the game to connect as a client of')
+        .addNumberOption((opt) => opt
+          .setName('port')
+          .setDescription('Port number your game is hosted on')
           .setRequired(true))
         .addStringOption((opt) => opt
           .setName('slot-name')
@@ -27,7 +28,7 @@ module.exports = {
           .setRequired(false)),
       async execute(interaction) {
         const serverAddress = interaction.options.getString('server-address');
-        const gameName = interaction.options.getString('game-name');
+        const port = interaction.options.getNumber('port');
         const slotName = interaction.options.getString('slot-name');
         const password = interaction.options.getString('password', false) ?? null;
 
@@ -40,24 +41,20 @@ module.exports = {
         }
 
         // Establish a connection to the Archipelago game
-        const APInterface = new ArchipelagoInterface(interaction.channel, serverAddress, gameName, slotName, password);
+        const APInterface = new ArchipelagoInterface(interaction.channel, serverAddress, port,
+          slotName, password);
 
-        // Check if the connection was successful every half second for ten seconds
-        for (let i=0; i<20; ++i){
+        // Check if the connection was successful every half second for five seconds
+        for (let i=0; i<10; ++i){
           // Wait half of a second
           await new Promise((resolve) => (setTimeout(resolve, 500)));
 
-          // If the client fails to connect, its status will eventually read disconnected
-          if (APInterface.APClient.status === 'Disconnected') {
-            return interaction.reply({
-              content: `Unable to connect to AP server at ${serverAddress}.`,
-              ephemeral: true,
-            });
-          }
-
           if (APInterface.APClient.status === 'Connected') {
             interaction.client.tempData.apInterfaces.set(interaction.channel.id, APInterface);
-            await interaction.reply(`Connected to ${serverAddress} using game ${gameName} with slot ${slotName}.`);
+            await interaction.reply({
+              content: `Connected to ${serverAddress} with slot ${slotName}.`,
+              ephemeral: false,
+            });
 
 //            // Automatically disconnect and destroy this interface after six hours
 //            return setTimeout(() => {
@@ -68,6 +65,12 @@ module.exports = {
 //            }, 21600000);
           }
         }
+
+        // If the client fails to connect, notify the user
+        return interaction.reply({
+          content: `Unable to connect to AP server at ${serverAddress}.`,
+          ephemeral: false,
+        });
       },
     },
     {
@@ -135,9 +138,49 @@ module.exports = {
           });
         }
 
-        // Disassociate the user from the specified alias
-        interaction.client.tempData.apInterfaces.get(interaction.channel.id).unsetPlayer(alias);
-        return interaction.reply(`User ${interaction.user} disassociated from ${alias}.`);
+        // Determine if the alias has been set
+        const apInterface = interaction.client.tempData.apInterfaces.get(interaction.channel.id);
+        if (apInterface.players.has(alias)) {
+          // Only the user associated with an alias may unset it
+          if (apInterface.players.get(alias) !== interaction.user) {
+            return interaction.reply('Only the user associated with an alias may unset it.');
+          }
+
+          // Disassociate the user from the specified alias
+          interaction.client.tempData.apInterfaces.get(interaction.channel.id).unsetPlayer(alias);
+          return interaction.reply(`${interaction.user} has been disassociated from ${alias}.`);
+        }
+
+        return interaction.reply(`${alias} is not associated with any user.`);
+      },
+    },
+    {
+      commandBuilder: new SlashCommandBuilder()
+        .setName('ap-list-aliases')
+        .setDescription('Display a list of aliases for the game in the current channel')
+        .setDMPermission(false),
+      async execute(interaction) {
+        // Notify the user if there is no game being monitored in the current text channel
+        if (!interaction.client.tempData.apInterfaces.has(interaction.channel.id)) {
+          return interaction.reply({
+            content: 'There is no Archipelago game being monitored in this channel.',
+            ephemeral: true,
+          });
+        }
+
+        // Display the list of aliases for the current channel's game
+        const aliases = interaction.client.tempData.apInterfaces.get(interaction.channel.id).players;
+        if (aliases.size === 0) {
+          return interaction.reply('No aliases are currently assigned.');
+        }
+
+        const table = new AsciiTable3()
+          .setHeading('Player', 'Alias')
+          .addRowMatrix(Array.from(aliases, (alias) => [alias[1].displayName || alias[1].username, alias[0]]))
+          .setAlign(1, AlignmentEnum.LEFT)
+          .setAlign(2, AlignmentEnum.RIGHT)
+          .setStyle('compact');
+        return interaction.reply(`\`\`\`${table.toString()}\`\`\``);
       },
     },
     {
