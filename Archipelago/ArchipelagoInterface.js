@@ -5,12 +5,12 @@ const { v4: uuid } = require('uuid');
 class ArchipelagoInterface {
   /**
    * @param textChannel discord.js TextChannel
-   * @param {string} host
-   * @param {Number} port
-   * @param {string} slotName
+   * @param {string} host optional
+   * @param {Number} port optional
+   * @param {string} slotName optional
    * @param {string|null} password optional
    */
-  constructor(textChannel, host, port, slotName, password=null) {
+  constructor(textChannel, host="localhost", port=38281, slotName="AlchapelaBot", password=null) {
     this.textChannel = textChannel;
     this.messageQueue = [];
     this.players = new Map();
@@ -19,10 +19,10 @@ class ArchipelagoInterface {
     this.slotName = slotName;
 
     // Controls which messages should be printed to the channel
-    this.showHints = true;
-    this.showItems = true;
+    this.showHints = false;
+    this.showItems = false;
     this.showProgression = true;
-    this.showChat = true;
+    this.showChat = false;
 
     const connectionInfo = {
       hostname: host,
@@ -63,6 +63,7 @@ class ArchipelagoInterface {
     let messages = [];
 
     for (let message of this.messageQueue) {
+      console.info(`${message}`);
       switch(message.type) {
         case 'hint':
         // Ignore hint messages if they should not be displayed

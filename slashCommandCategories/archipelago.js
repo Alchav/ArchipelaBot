@@ -13,23 +13,23 @@ module.exports = {
         .addStringOption((opt) => opt
           .setName('server-address')
           .setDescription('Server address and port (ex. archipelago.gg) of the Archipelago server to connect to')
-          .setRequired(true))
+          .setRequired(false))
         .addNumberOption((opt) => opt
           .setName('port')
           .setDescription('Port number your game is hosted on')
-          .setRequired(true))
+          .setRequired(false))
         .addStringOption((opt) => opt
           .setName('slot-name')
           .setDescription('`name` field in your settings file')
-          .setRequired(true))
+          .setRequired(false))
         .addStringOption((opt) => opt
           .setName('password')
           .setDescription('Optional password required to connect to the server')
           .setRequired(false)),
       async execute(interaction) {
-        const serverAddress = interaction.options.getString('server-address');
-        const port = interaction.options.getNumber('port');
-        const slotName = interaction.options.getString('slot-name');
+        const serverAddress = interaction.options.getString('server-address') ?? 'localhost';
+        const port = interaction.options.getNumber('port') ?? 38281;
+        const slotName = interaction.options.getString('slot-name') ?? 'AlchapelaBot';
         const password = interaction.options.getString('password', false) ?? null;
 
         if (interaction.client.tempData.apInterfaces.has(interaction.channel.id)) {
