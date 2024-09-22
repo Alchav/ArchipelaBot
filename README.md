@@ -22,13 +22,15 @@ are compatible and have full MultiWorld compatibility with each other.
 
 ## Configuration
 A `config.json` file is required to be present in the base directory of the repository. This file should contain
-your Discord bot's secret key.
+your Discord bot's secret key and SQLite filename. This file may be named `:memory:` to keep the database in memory,
+which is recommended for production environments.
 
 Example config:
 ```json
 {
   "token": "discord-bot-token",
-  "clientId": "application-client-id"
+  "clientId": "application-client-id",
+  "sqliteFile": ":memory:"
 }
 ```
 
@@ -59,6 +61,9 @@ npm install
 
 # Set up your config.json file
 vim config.json
+
+# Register application (slash) commands
+node scripts/registerSlashCommands.js
 
 # Run the bot
 node bot.js
