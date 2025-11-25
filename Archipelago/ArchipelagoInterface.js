@@ -1,218 +1,160 @@
-const { Client, ITEMS_HANDLING_FLAGS, COMMON_TAGS, SERVER_PACKET_TYPE, ConnectionStatus } = require('archipelago.js');
-const { User } = require('discord.js');
-const { v4: uuid } = require('uuid');
+// ArchipelagoInterface.js — CommonJS wrapper for archipelago.js (ESM)
+
+//
+// NOTE: DO NOT USE require("archipelago.js") — it is ESM only.
+//       We load it via dynamic import() inside async _init().
+//
 
 class ArchipelagoInterface {
-  /**
-   * @param textChannel discord.js TextChannel
-   * @param {string} host optional
-   * @param {Number} port optional
-   * @param {string} slotName optional
-   * @param {string|null} password optional
-   */
-  constructor(textChannel, host="localhost", port=38281, slotName="AlchapelaBot", password=null) {
-    this.textChannel = textChannel;
-    this.messageQueue = [];
-    this.players = new Map();
-    this.APClient = new Client();
-
+  constructor(discordChannel, server, port, slotName, password) {
+    this.discordChannel = discordChannel;
+    this.server = server;
+    this.port = port;
     this.slotName = slotName;
+    this.password = password ?? "";
 
-    // Controls which messages should be printed to the channel
-    this.showHints = false;
-    this.showItems = false;
-    this.showProgression = true;
+    // Visibility toggles
     this.showChat = false;
+    this.showHints = false;
+    this.showItems = true;
+    this.showProgression = true;
 
-    const connectionInfo = {
-      hostname: host,
-      port,
-      uuid: uuid(),
-      game: '',
-      name: slotName,
-      password: password,
-      tags: [COMMON_TAGS.TEXT_ONLY],
-      items_handling: ITEMS_HANDLING_FLAGS.LOCAL_ONLY,
-    };
+    this.players = new Map();
 
-    this.APClient.connect(connectionInfo).then(() => {
-      // Start handling queued messages
-      this.queueTimeout = setTimeout(this.queueHandler, 5000);
+    this._status = "connecting";
+    this._client = null;
 
-      // Set up packet listeners
-      // this.APClient.addListener(SERVER_PACKET_TYPE.PRINT, this.printHandler);
-      this.APClient.addListener(SERVER_PACKET_TYPE.PRINT_JSON, this.printJSONHandler);
-
-      // Inform the user ArchipelaBot has connected to the game
-      textChannel.send('Connection established.');
-    }).catch(async (err) => {
-      console.error('Error while trying to connect with connectionInfo:');
-      console.error(connectionInfo);
-      console.error('With trace:');
-      console.error(err);
-      await this.textChannel.send('A problem occurred while connecting to the AP server:\n' +
-        `\`\`\`${JSON.stringify(err)}\`\`\``);
-    });
+    this._init();
   }
 
-  /**
-   * Send queued messages to the TextChannel in batches of five or less
-   * @returns {Promise<void>}
-   */
-  queueHandler = async () => {
-    let messages = [];
+  // Convert AP node arrays → a human-readable message exactly like pre-2.0 bots
+  _buildMessage(nodes) {
+    if (!Array.isArray(nodes)) return "";
 
-    for (let message of this.messageQueue) {
-      console.info(`${message}`);
-      switch(message.type) {
-        case 'hint':
-        // Ignore hint messages if they should not be displayed
-          if (!this.showHints) { continue; }
+    let msg = "";
 
-          // Replace player names with Discord User objects
-          for (let alias of this.players.keys()) {
-            if (message.content.includes(alias)) {
-              message.content = message.content.replace(alias, this.players.get(alias));
-            }
-          }
-          break;
-
-        case 'item':
-        // Ignore item messages if they should not be displayed
-          if (!this.showItems) { continue; }
-          break;
-
-        case 'progression':
-        // Ignore progression messages if they should not be displayed
-          if (!this.showProgression) { continue; }
-          break;
-
-        case 'chat':
-        // Ignore chat messages if they should not be displayed
-          if (!this.showChat) { continue; }
-          break;
-
-        default:
-          console.warn(`Ignoring unknown message type: ${message.type}`);
-          break;
-      }
-
-      messages.push(message.content);
+    for (const node of nodes) {
+      msg += node.text ?? "";
     }
 
-    // Clear the message queue
-    this.messageQueue = [];
+    return msg.trim();
+  }
 
-    // Send messages to TextChannel in batches of five, spaced two seconds apart to avoid rate limit
-    while (messages.length > 0) {
-      await this.textChannel.send(messages.splice(0, 5).join('\n'));
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+  async _init() {
+    try {
+      // Load the ESM module archipelago.js
+      const { Client, clientStatuses } = await import("archipelago.js");
+
+      this._client = new Client({
+        timeout: 10000,
+        autoFetchDataPackage: true,
+        maximumMessages: 500,
+        debugLogVersions: false
+      });
+
+      const url = `wss://${this.server}:${this.port}`;
+
+      this._client
+        .login(url, this.slotName, "", {
+          password: this.password,
+          tags: ["AP", "DiscordBot"]
+        })
+        .then(() => {
+          this._status = "authenticated";
+        })
+        .catch((err) => {
+          console.error("[AP] Login failed:", err);
+          this._status = "error";
+        });
+
+      this._registerEvents(clientStatuses);
+    } catch (err) {
+      console.error("[AP] Failed to initialize:", err);
+      this._status = "error";
     }
+  }
 
-    // Set timeout to run again after five seconds
-    this.queueTimeout = setTimeout(this.queueHandler, 5000);
-  };
+  _registerEvents(clientStatuses) {
+    if (!this._client) return;
 
-  /**
-   * Listen for a print packet and add that message to the message queue
-   * @param {Object} packet
-   * @returns {Promise<void>}
-   */
-  printHandler = async (packet) => {
-    this.messageQueue.push({
-      type: packet.text.includes('[Hint]') ? 'hint' : 'chat',
-      content: packet.text,
-    });
-  };
-
-  /**
-   * Listen for a printJSON packet, convert it to a human-readable format, and add the message to the queue
-   * @param {Object} packet
-   * @param {String} rawMessage
-   * @returns {Promise<void>}
-   */
-  printJSONHandler = async (packet, rawMessage) => {
-    let message = { type: 'chat', content: '', };
-
-    if (!['ItemSend', 'ItemCheat', 'Hint'].includes(packet.type)) {
-      message.content = rawMessage;
-      this.messageQueue.push(message);
-      return;
-    }
-
-    packet.data.forEach((part) => {
-      // Plain text parts do not have a "type" property
-      if (!part.hasOwnProperty('type') && part.hasOwnProperty('text')) {
-        message.content += part.text;
-        return;
-      }
-
-      switch(part.type){
-        case 'player_id':
-          message.content += '**'+this.APClient.players.alias(parseInt(part.text, 10))+'**';
-          break;
-
-        case 'item_id':
-          const itemName = this.APClient.players.get(packet.receiving).item(parseInt(part.text, 10));
-          message.content += `**${itemName}**`;
-
-          // Identify this message as containing an item
-          if (message.type == 'useful') { message.type = 'progression'; }
-          if (message.type !== 'progression') { message.type = 'item'; }
-
-          // Identify if this message contains a progression item
-          if (part?.flags & 0b011) {
-            message.type = 'progression';
-          }
-          break;
-
-        case 'location_id':
-          const locationName = this.APClient.players.get(packet.item.player).location(parseInt(part.text, 10));
-          message.content += `**${locationName}**`;
-          break;
-
-        case 'color':
-          message.content += part.text;
-          break;
-
-        default:
-          console.warn(`Ignoring unknown message type ${part.type} with text "${part.text}".`);
-          return;
-      }
+    //
+    // Socket status
+    //
+    this._client.socket.on("connected", () => {
+      console.log("[AP] Socket connected.");
     });
 
-    // Identify hint messages
-    if (rawMessage.includes('[Hint]')) { message.type = 'hint'; }
+    this._client.socket.on("disconnected", () => {
+      console.log("[AP] Socket disconnected.");
+      this._status = "disconnected";
+    });
 
-    this.messageQueue.push(message);
-  };
+    //
+    // Chat
+    //
+    this._client.messages.on("chat", (message, player, nodes) => {
+      const reconstructed = this._buildMessage(nodes);
+      console.log("[CHAT RAW]", { message, player, nodes, reconstructed });
+      if (this.showChat && reconstructed) this.discordChannel.send(reconstructed);
+    });
 
-  /**
-   * Associate a Discord user with a specified alias
-   * @param {string} alias
-   * @param {User} discordUser
-   * @returns {*}
-   */
-  setPlayer = (alias, discordUser) => this.players.set(alias, discordUser);
 
-  /**
-   * Disassociate a Discord user with a specified alias
-   * @param alias
-   * @returns {boolean}
-   */
-  unsetPlayer = (alias) => this.players.delete(alias);
+    //
+    // Item sent
+    //
+    this._client.messages.on("itemSent", (text, item, nodes) => {
+      const reconstructed = this._buildMessage(nodes);
+      if (!reconstructed) return;
 
-  /**
-   * Determine the status of the ArchipelagoClient object
-   * @returns {ConnectionStatus}
-   */
-  getStatus = () => this.APClient.status;
+        const isProgression = item.flags & 1;
+        const isUseful      = item.flags & 2;
 
-  /** Close the WebSocket connection on the ArchipelagoClient object */
-  disconnect = () => {
-    clearTimeout(this.queueTimeout);
-    this.APClient.disconnect();
-  };
+        if (isProgression || isUseful) {
+        // show only progression OR useful
+            this.discordChannel.send(reconstructed);
+        }
+    });
+
+
+    //
+    // Hint
+    //
+    this._client.messages.on("itemHinted", (text, item, found, nodes) => {
+      const reconstructed = this._buildMessage(nodes);
+      if (this.showHints && reconstructed) this.discordChannel.send(reconstructed);
+    });
+}
+
+  //
+  // Player alias management (unchanged)
+  //
+  setPlayer(alias, user) {
+    this.players.set(alias, user);
+  }
+
+  unsetPlayer(alias) {
+    this.players.delete(alias);
+  }
+
+  //
+  // Bot status
+  //
+  getStatus() {
+    return this._status;
+  }
+
+  //
+  // Disconnect cleanly
+  //
+  disconnect() {
+    try {
+      if (this._client) {
+        this._client.socket.disconnect();
+      }
+    } catch (err) {
+      console.error("[AP] Disconnect error:", err);
+    }
+  }
 }
 
 module.exports = ArchipelagoInterface;

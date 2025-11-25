@@ -1,5 +1,6 @@
 {
   "name": "archipelabot",
+  "type": "commonjs",
   "version": "1.1.0",
   "license": "MIT",
   "scripts": {
@@ -8,7 +9,7 @@
     "registerCommands": "node scripts/registerSlashCommands.js"
   },
   "dependencies": {
-    "archipelago.js": "^1.1.0",
+    "archipelago.js": "^2.0.4",
     "ascii-table3": "^0.9.0",
     "axios": "^1.7.4",
     "discord.js": "^14.15.3",
@@ -16,7 +17,8 @@
     "moment-timezone": "^0.5.45",
     "sqlite3": "^5.1.7",
     "tmp": "^0.2.3",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "depcheck": "^1.4.7",

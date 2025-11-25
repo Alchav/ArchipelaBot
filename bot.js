@@ -1,3 +1,4 @@
+global.WebSocket = require("ws");
 const { Client, Events, GatewayIntentBits, Partials } = require('discord.js');
 const config = require('./config.json');
 const { cachePartial } = require('./lib');
@@ -28,16 +29,16 @@ client.tempData = {
 };
 
 // Load message listener files
-fs.readdirSync('./messageListeners').filter((file) => file.endsWith('.js')).forEach((listenerFile) => {
-  const listener = require(`./messageListeners/${listenerFile}`);
-  client.messageListeners.push(listener);
-});
+//fs.readdirSync('./messageListeners').filter((file) => file.endsWith('.js')).forEach((listenerFile) => {
+//  const listener = require(`./messageListeners/${listenerFile}`);
+//  client.messageListeners.push(listener);
+//});
 
-// Load channelDeleted listeners
-fs.readdirSync('./channelDeletedListeners').filter((file) => file.endsWith('.js')).forEach((listenerFile) => {
-  const listener = require(`./channelDeletedListeners/${listenerFile}`);
-  client.channelDeletedListeners.push(listener);
-});
+//// Load channelDeleted listeners
+//fs.readdirSync('./channelDeletedListeners').filter((file) => file.endsWith('.js')).forEach((listenerFile) => {
+//  const listener = require(`./channelDeletedListeners/${listenerFile}`);
+//  client.channelDeletedListeners.push(listener);
+//});
 
 // Load slash command category files
 fs.readdirSync('./slashCommandCategories').filter((file) => file.endsWith('.js')).forEach((categoryFile) => {
@@ -45,17 +46,17 @@ fs.readdirSync('./slashCommandCategories').filter((file) => file.endsWith('.js')
   client.slashCommandCategories.push(slashCommandCategory);
 });
 
-// Load voice state listener files
-fs.readdirSync('./voiceStateListeners').filter((file) => file.endsWith('.js')).forEach((listenerFile) => {
-  const listener = require(`./voiceStateListeners/${listenerFile}`);
-  client.voiceStateListeners.push(listener);
-});
-
-// Load routines and run them once per hour
-fs.readdirSync('./routines').filter((file) => file.endsWith('.js')).forEach((routineFile) => {
-  const routine = require(`./routines/${routineFile}`);
-  setInterval(routine, 3600000);
-});
+//// Load voice state listener files
+//fs.readdirSync('./voiceStateListeners').filter((file) => file.endsWith('.js')).forEach((listenerFile) => {
+//  const listener = require(`./voiceStateListeners/${listenerFile}`);
+//  client.voiceStateListeners.push(listener);
+//});
+//
+//// Load routines and run them once per hour
+//fs.readdirSync('./routines').filter((file) => file.endsWith('.js')).forEach((routineFile) => {
+//  const routine = require(`./routines/${routineFile}`);
+//  setInterval(routine, 3600000);
+//});
 
 // Run messages through the listeners
 client.on(Events.MessageCreate, async (msg) => {
