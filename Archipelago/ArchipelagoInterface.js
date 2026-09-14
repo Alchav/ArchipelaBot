@@ -135,6 +135,15 @@ class ArchipelagoInterface {
     });
 
     //
+    // Game completed
+    //
+    this._client.messages.on('goaled', (text, player, nodes) => {
+      const reconstructed = this._buildMessage(nodes);
+      const message = reconstructed || `**${player.alias}** completed their game!`;
+      void this._sendDiscordMessage(message);
+    });
+
+    //
     // Item sent
     //
     this._client.messages.on('itemSent', (text, item, nodes) => {
