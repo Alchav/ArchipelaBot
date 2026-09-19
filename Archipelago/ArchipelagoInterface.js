@@ -27,6 +27,10 @@ class ArchipelagoInterface {
     this._hasAuthenticated = false;
     this._manualDisconnect = false;
     this._disconnectHandled = false;
+    this._completedPlayers = new Set();
+    this._goalStatusesInitialized = false;
+    this._goalPollInterval = null;
+    this._goalPollInProgress = false;
 
     this._init();
   }
@@ -47,7 +51,7 @@ class ArchipelagoInterface {
   async _init() {
     try {
       // Load the ESM module archipelago.js
-      const { Client } = await import('archipelago.js');
+      const { Client, clientStatuses, slotTypes } = await import('archipelago.js');
 
       this._client = new Client({
         timeout: 10000,
@@ -67,6 +71,7 @@ class ArchipelagoInterface {
           if (this._disconnectHandled) return;
           this._hasAuthenticated = true;
           this._status = 'authenticated';
+          this._startGoalStatusPolling(clientStatuses.goal, slotTypes.player);
         })
         .catch((err) => {
           if (this._disconnectHandled) return;
@@ -89,11 +94,72 @@ class ArchipelagoInterface {
     }
   }
 
+  _playerKey(player) {
+    return `${player.team}:${player.slot}`;
+  }
+
+  async _announceGoal(player, message = null) {
+    const playerKey = this._playerKey(player);
+    if (this._completedPlayers.has(playerKey)) return;
+
+    this._completedPlayers.add(playerKey);
+    await this._sendDiscordMessage(
+      message || `**${player.alias}** completed their game!`
+    );
+  }
+
+  _startGoalStatusPolling(goalStatus, playerSlotType) {
+    const poll = async () => {
+      if (this._goalPollInProgress || !this._client?.authenticated) return;
+      this._goalPollInProgress = true;
+
+      try {
+        const players = this._client.players.teams
+          .flat()
+          .filter(player => player.slot > 0 && player.type === playerSlotType);
+        const playersByStatusKey = new Map(
+          players.map(player => [
+            `_read_client_status_${player.team}_${player.slot}`,
+            player,
+          ])
+        );
+        const statuses = await this._client.storage.fetch(
+          Array.from(playersByStatusKey.keys())
+        );
+
+        for (const [statusKey, player] of playersByStatusKey) {
+          if (statuses[statusKey] === goalStatus) {
+            if (this._goalStatusesInitialized) {
+              await this._announceGoal(player);
+            } else {
+              this._completedPlayers.add(this._playerKey(player));
+            }
+          }
+        }
+
+        this._goalStatusesInitialized = true;
+      } catch (err) {
+        console.error('[AP] Failed to check player completion statuses:', err);
+      } finally {
+        this._goalPollInProgress = false;
+      }
+    };
+
+    void poll();
+    this._goalPollInterval = setInterval(poll, 10000);
+    this._goalPollInterval.unref?.();
+  }
+
   async _handleDisconnect({ notifyDiscord }) {
     if (this._disconnectHandled) return;
 
     this._disconnectHandled = true;
     this._status = 'disconnected';
+
+    if (this._goalPollInterval) {
+      clearInterval(this._goalPollInterval);
+      this._goalPollInterval = null;
+    }
 
     if (typeof this._onDisconnect === 'function') {
       try {
@@ -139,8 +205,7 @@ class ArchipelagoInterface {
     //
     this._client.messages.on('goaled', (text, player, nodes) => {
       const reconstructed = this._buildMessage(nodes);
-      const message = reconstructed || `**${player.alias}** completed their game!`;
-      void this._sendDiscordMessage(message);
+      void this._announceGoal(player, reconstructed);
     });
 
     //
